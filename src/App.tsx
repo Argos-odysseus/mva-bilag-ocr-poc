@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import './App.css'
 import { recognizeImage, type OcrProgress } from './ocrAdapter'
-import { analyzeVatText, formatNok, SAMPLE_TEXT, type VatCandidate } from './vatAnalyzer'
+import { analyzeVatText, formatNok, SAMPLE_TEXT, type VatCandidate, type VatSummary } from './vatAnalyzer'
 
 type ConfirmedState = Record<string, 'confirmed' | 'corrected'>
 
@@ -86,6 +86,8 @@ function App() {
             <span>{analysis.candidates.length} candidate lines</span>
           </div>
 
+          <VatSummaryCard summary={analysis.vatSummary} />
+
           <div className="candidate-list">
             {analysis.candidates.length === 0 ? (
               <div className="empty-state">No MVA/VAT candidates found. Paste invoice text or upload a clearer image.</div>
@@ -111,6 +113,42 @@ function App() {
         <pre>{text || 'No extracted text yet.'}</pre>
       </section>
     </main>
+  )
+}
+
+function VatSummaryCard({ summary }: { summary: VatSummary }) {
+  const title =
+    summary.state === 'found' ? 'Total MVA' : summary.state === 'needs-review' ? 'MVA needs review' : 'No MVA detected'
+
+  return (
+    <article className={`vat-summary-card ${summary.state}`}>
+      <div className="vat-summary-head">
+        <div>
+          <span className="line-label">{summary.label}</span>
+          <h3>{title}</h3>
+        </div>
+        <div className="score">
+          <strong>{summary.confidence}</strong>
+          <span>confidence</span>
+        </div>
+      </div>
+
+      <div className="vat-summary-amount">{summary.amount !== undefined ? formatNok(summary.amount) : '-'}</div>
+      <pre className="snippet">{summary.evidence}</pre>
+
+      {summary.candidates.length > 0 && (
+        <ul className="summary-candidates">
+          {summary.candidates.slice(0, 3).map((candidate) => (
+            <li key={`${candidate.lineNumber}-${candidate.amount}-${candidate.confidence}`}>
+              <strong>{formatNok(candidate.amount)}</strong>
+              <span>
+                {candidate.confidence} - {candidate.reason}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </article>
   )
 }
 

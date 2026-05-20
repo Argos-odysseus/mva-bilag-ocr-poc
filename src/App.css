@@ -209,6 +209,61 @@ button.active {
   padding: 16px;
 }
 
+.vat-summary-card {
+  margin: 16px 16px 0;
+  border: 1px solid #d9dee8;
+  border-left: 7px solid #c28b13;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fffdf7;
+}
+
+.vat-summary-card.found {
+  border-left-color: #2f8f53;
+  background: #f7fff9;
+}
+
+.vat-summary-card.not-found {
+  border-left-color: #be4334;
+  background: #fff8f7;
+}
+
+.vat-summary-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px;
+}
+
+.vat-summary-amount {
+  padding: 0 14px 12px;
+  font-size: 32px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.summary-candidates {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0 14px 14px;
+  list-style: none;
+}
+
+.summary-candidates li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #334056;
+  font-size: 13px;
+}
+
+.summary-candidates span {
+  color: #5b677a;
+  text-align: right;
+}
+
 .empty-state {
   padding: 48px 18px;
   color: #5b677a;

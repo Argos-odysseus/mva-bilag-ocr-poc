@@ -9,6 +9,44 @@ describe('parseMoney', () => {
 })
 
 describe('analyzeVatText', () => {
+  it('summarizes an explicit MVA amount label', () => {
+    const result = analyzeVatText('MVA beløp: kr 250,00')
+
+    expect(result.vatSummary).toMatchObject({
+      state: 'found',
+      amount: 250,
+    })
+    expect(result.vatSummary.confidence).toBeGreaterThanOrEqual(76)
+  })
+
+  it('summarizes Herav MVA with rate before amount', () => {
+    const result = analyzeVatText('Herav MVA 25% 123,45')
+
+    expect(result.vatSummary).toMatchObject({
+      state: 'found',
+      amount: 123.45,
+    })
+  })
+
+  it('summarizes OCR-ish MVA-belop text with NOK and thousands spaces', () => {
+    const result = analyzeVatText('MVA-belop NOK 1 234,50')
+
+    expect(result.vatSummary).toMatchObject({
+      state: 'found',
+      amount: 1234.5,
+    })
+  })
+
+  it('returns a visible review summary when no VAT text is detected', () => {
+    const result = analyzeVatText('Kaffe og papir\nTotalt: kr 349,00')
+
+    expect(result.vatSummary).toMatchObject({
+      state: 'needs-review',
+      label: 'No MVA detected',
+    })
+    expect(result.vatSummary.candidates).toEqual([])
+  })
+
   it('finds and validates a 25 percent MVA line against net and gross', () => {
     const result = analyzeVatText(`
       Netto grunnlag 25%: 1 200,00
