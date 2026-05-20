@@ -2,6 +2,8 @@
 
 Browser-only proof of concept for caseworkers who need to check VAT/MVA amounts from receipts, bilag, and invoices.
 
+Live demo: https://argos-odysseus.github.io/mva-bilag-ocr-poc/
+
 ## Scope
 
 - Upload a receipt/invoice image and run browser-side OCR with Tesseract.js.
