@@ -206,11 +206,26 @@ button.active {
 .candidate-list {
   display: grid;
   gap: 12px;
-  padding: 16px;
+  padding: 0 16px 16px;
+}
+
+.candidate-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 18px 16px 12px;
+  padding-top: 16px;
+  border-top: 1px solid #d9dee8;
+}
+
+.candidate-section-heading span {
+  color: #5b677a;
+  font-size: 13px;
 }
 
 .vat-summary-card {
-  margin: 16px 16px 0;
+  margin: 16px;
   border: 1px solid #d9dee8;
   border-left: 7px solid #c28b13;
   border-radius: 8px;
@@ -232,21 +247,40 @@ button.active {
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px;
+  padding: 18px 18px 12px;
 }
 
 .vat-summary-amount {
-  padding: 0 14px 12px;
-  font-size: 32px;
+  padding: 0 18px 14px;
+  font-size: 40px;
   font-weight: 800;
   line-height: 1.1;
+}
+
+.vat-summary-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 18px 14px;
+  padding: 10px 12px;
+  border: 1px solid #d9dee8;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #334056;
+  font-size: 14px;
+}
+
+.vat-summary-status span {
+  color: #5b677a;
+  text-align: right;
 }
 
 .summary-candidates {
   display: grid;
   gap: 6px;
   margin: 0;
-  padding: 0 14px 14px;
+  padding: 0 18px 18px;
   list-style: none;
 }
 

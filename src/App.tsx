@@ -82,11 +82,16 @@ function App() {
 
         <section className="results-panel">
           <div className="panel-heading">
-            <h2>VAT candidates</h2>
-            <span>{analysis.candidates.length} candidate lines</span>
+            <h2>Document VAT audit</h2>
+            <span>{analysis.vatSummary.state === 'found' ? 'Ready for review' : 'Manual review needed'}</span>
           </div>
 
           <VatSummaryCard summary={analysis.vatSummary} />
+
+          <div className="candidate-section-heading">
+            <h2>Line-level evidence</h2>
+            <span>{analysis.candidates.length} candidate lines</span>
+          </div>
 
           <div className="candidate-list">
             {analysis.candidates.length === 0 ? (
@@ -118,13 +123,15 @@ function App() {
 
 function VatSummaryCard({ summary }: { summary: VatSummary }) {
   const title =
-    summary.state === 'found' ? 'Total MVA' : summary.state === 'needs-review' ? 'MVA needs review' : 'No MVA detected'
+    summary.state === 'found' ? 'Total VAT/MVA due for document' : summary.state === 'needs-review' ? 'Total VAT/MVA needs review' : 'No document VAT/MVA detected'
+  const status =
+    summary.state === 'found' ? 'Validation status: detected' : summary.state === 'needs-review' ? 'Validation status: review required' : 'Validation status: not detected'
 
   return (
     <article className={`vat-summary-card ${summary.state}`}>
       <div className="vat-summary-head">
         <div>
-          <span className="line-label">{summary.label}</span>
+          <span className="line-label">Document-level audit result</span>
           <h3>{title}</h3>
         </div>
         <div className="score">
@@ -134,6 +141,10 @@ function VatSummaryCard({ summary }: { summary: VatSummary }) {
       </div>
 
       <div className="vat-summary-amount">{summary.amount !== undefined ? formatNok(summary.amount) : '-'}</div>
+      <div className="vat-summary-status">
+        <strong>{status}</strong>
+        <span>{summary.label}</span>
+      </div>
       <pre className="snippet">{summary.evidence}</pre>
 
       {summary.candidates.length > 0 && (
