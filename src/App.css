@@ -427,11 +427,11 @@ dd {
 }
 
 .key-field.found {
-  border-left-color: #2f8f53;
+  border-left-color: #d6a000;
 }
 
 .key-field.needs-review {
-  border-left-color: #c28b13;
+  border-left-color: #d6a000;
 }
 
 .key-field.not-found {
@@ -439,9 +439,10 @@ dd {
 }
 
 .key-field.active {
-  background: #ffffff;
+  border-color: #d6a000;
+  background: #fff3b0;
   color: #172033;
-  outline: 3px solid rgba(36, 79, 143, 0.18);
+  outline: 3px solid rgba(214, 160, 0, 0.24);
 }
 
 .key-field span,
@@ -483,8 +484,8 @@ dd {
   align-items: flex-start;
   justify-content: flex-end;
   min-height: 26px;
-  border: 2px solid #244f8f;
-  background: rgba(36, 79, 143, 0.11);
+  border: 3px solid #f0c400;
+  background: rgba(255, 235, 59, 0.2);
   pointer-events: none;
   transition:
     background 160ms ease,
@@ -496,33 +497,33 @@ dd {
   margin: -28px -2px 0 0;
   padding: 4px 7px;
   border-radius: 4px 4px 0 0;
-  background: #244f8f;
-  color: #ffffff;
+  background: #f0c400;
+  color: #172033;
   font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
 }
 
 .image-marker.vat-total {
-  border-color: #2f8f53;
-  background: rgba(47, 143, 83, 0.13);
+  border-color: #f0c400;
+  background: rgba(255, 235, 59, 0.22);
 }
 
 .image-marker.vat-total span {
-  background: #2f8f53;
+  background: #f0c400;
 }
 
 .image-marker.org-number {
-  border-color: #244f8f;
+  border-color: #f0c400;
 }
 
 .image-marker.recipient-address {
-  border-color: #8d5a00;
-  background: rgba(194, 139, 19, 0.14);
+  border-color: #f0c400;
+  background: rgba(255, 235, 59, 0.22);
 }
 
 .image-marker.recipient-address span {
-  background: #8d5a00;
+  background: #f0c400;
 }
 
 .image-marker.not-found {
@@ -531,7 +532,11 @@ dd {
 
 .image-marker.active {
   z-index: 2;
-  box-shadow: 0 0 0 5px rgba(36, 79, 143, 0.22);
+  border-color: #ffbf00;
+  background: rgba(255, 235, 59, 0.34);
+  box-shadow:
+    0 0 0 5px rgba(255, 235, 59, 0.35),
+    0 0 0 8px rgba(214, 160, 0, 0.18);
   transform: scale(1.01);
 }
 
@@ -556,7 +561,14 @@ dd {
 }
 
 .text-line.marked {
-  background: #fff7df;
+  border: 2px solid #f0c400;
+  background: rgba(255, 235, 59, 0.18);
+}
+
+.text-line.active {
+  border-color: #ffbf00;
+  background: #fff3b0;
+  box-shadow: 0 0 0 4px rgba(255, 235, 59, 0.25);
 }
 
 .text-line-number {
@@ -566,18 +578,18 @@ dd {
 
 .text-marker {
   padding: 2px 7px;
-  border: 1px solid #c28b13;
+  border: 1px solid #d6a000;
   border-radius: 4px;
-  background: #fffdf7;
+  background: #fff8cc;
   color: #6c4700;
   font: 12px/1.4 system-ui, sans-serif;
   white-space: nowrap;
 }
 
 .text-marker.active {
-  border-color: #244f8f;
-  background: #eaf1fb;
-  color: #244f8f;
+  border-color: #a97900;
+  background: #f0c400;
+  color: #172033;
 }
 
 @media (max-width: 900px) {

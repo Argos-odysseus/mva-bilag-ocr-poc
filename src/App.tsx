@@ -305,18 +305,21 @@ function TextPreview({
     <div className="text-preview">
       {lines.map((line, index) => {
         const lineFields = fieldsByLine.get(index + 1) ?? []
+        const isActiveLine = lineFields.some((field) => field.id === activeFieldId)
         return (
-          <div key={`${index}-${line}`} className={`text-line ${lineFields.length > 0 ? 'marked' : ''}`}>
+          <div
+            key={`${index}-${line}`}
+            ref={(element) => {
+              lineFields.forEach((field) => {
+                fieldRefs.current[field.id] = element
+              })
+            }}
+            className={`text-line ${lineFields.length > 0 ? 'marked' : ''} ${isActiveLine ? 'active' : ''}`}
+          >
             <span className="text-line-number">{index + 1}</span>
             <span>{line}</span>
             {lineFields.map((field) => (
-              <div
-                key={field.id}
-                ref={(element) => {
-                  fieldRefs.current[field.id] = element
-                }}
-                className={`text-marker ${field.id} ${field.id === activeFieldId ? 'active' : ''}`}
-              >
+              <div key={field.id} className={`text-marker ${field.id} ${field.id === activeFieldId ? 'active' : ''}`}>
                 {field.label}
               </div>
             ))}
