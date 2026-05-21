@@ -7,7 +7,8 @@ Live demo: https://argos-odysseus.github.io/mva-bilag-ocr-poc/
 ## Scope
 
 - Upload a receipt/invoice image and run browser-side OCR with Tesseract.js.
-- Paste text directly when OCR is unavailable or a PDF has already been processed elsewhere.
+- Upload PDF invoices and render/OCR every page locally in the browser with PDF.js + Tesseract.js.
+- Paste text directly when OCR is unavailable.
 - Extract Norwegian VAT labels such as `MVA`, `mva`, `merverdiavgift`, `moms`, `VAT`.
 - Detect rates `25%`, `15%`, `12%`, and `0%`.
 - Parse Norwegian comma decimals and thousands separators, for example `kr 1 234,50`.
@@ -16,6 +17,7 @@ Live demo: https://argos-odysseus.github.io/mva-bilag-ocr-poc/
 - Includes embedded sample invoice text so the POC can be tried without a file.
 
 This is a deterministic validator and OCR demo. It does not use local AI, VLMs, LLMs, or AI APIs.
+PDF parsing, OCR, and preview rendering stay in-browser. The app now bundles local PDF/Tesseract worker and language assets so runtime OCR does not depend on remote CDN downloads.
 
 ## Run Locally
 
@@ -34,10 +36,10 @@ npm run lint
 
 ## Limitations
 
-- Image OCR runs in the browser and depends on image clarity, orientation, and Tesseract.js language data loading.
-- PDF OCR is intentionally not implemented in this frontend-only POC. Paste extracted text or convert scanned PDFs to images/text first.
+- Image/PDF OCR runs in the browser and depends on source quality, scan orientation, and client CPU/memory.
+- Multi-page PDFs are processed sequentially and combined into one OCR text stream. Field highlights are page-aware, but complex table layouts and weak OCR line geometry still need more production hardening.
 - Candidate extraction is heuristic. It is designed to surface likely MVA rows for human review, not to auto-book accounting data.
-- Multi-page invoices, rotated scans, table-heavy layouts, split VAT groups, and credit notes need more production hardening.
+- Rotated scans, table-heavy layouts, split VAT groups, and credit notes need more production hardening.
 - No persistence, authentication, audit log, or backend workflow is included.
 
 ## Suggested Production Path

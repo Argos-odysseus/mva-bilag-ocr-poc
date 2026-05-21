@@ -163,6 +163,12 @@ button.active {
   color: #5b677a;
 }
 
+.dropzone em {
+  color: #5b677a;
+  font-size: 12px;
+  font-style: normal;
+}
+
 .progress,
 .error {
   margin: 0 16px 16px;
@@ -171,6 +177,12 @@ button.active {
 .progress div {
   display: flex;
   justify-content: space-between;
+  color: #5b677a;
+  font-size: 13px;
+}
+
+.progress p {
+  margin: 8px 0 0;
   color: #5b677a;
   font-size: 13px;
 }
@@ -462,6 +474,19 @@ dd {
   overflow: auto;
   padding: 18px;
   background: #eef2f7;
+}
+
+.document-page + .document-page {
+  margin-top: 24px;
+}
+
+.document-page-heading {
+  margin: 0 auto 8px;
+  width: min(100%, 1040px);
+  color: #5b677a;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 .document-image-wrap {

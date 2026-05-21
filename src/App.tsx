@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import './App.css'
-import { recognizeImage, type OcrLine, type OcrProgress } from './ocrAdapter'
+import { getUnsupportedDocumentMessage, isSupportedDocumentFile } from './documentIntake'
+import { recognizeDocument, type OcrLine, type OcrPreviewPage, type OcrProgress } from './ocrAdapter'
 import { analyzeVatText, formatNok, SAMPLE_TEXT, type KeyField, type VatCandidate, type VatSummary } from './vatAnalyzer'
 
 type ConfirmedState = Record<string, 'confirmed' | 'corrected'>
@@ -8,8 +9,7 @@ type ConfirmedState = Record<string, 'confirmed' | 'corrected'>
 function App() {
   const [text, setText] = useState(SAMPLE_TEXT)
   const [fileName, setFileName] = useState('Embedded sample')
-  const [imageUrl, setImageUrl] = useState('')
-  const [imageSize, setImageSize] = useState({ width: 0, height: 0 })
+  const [documentPages, setDocumentPages] = useState<OcrPreviewPage[]>([])
   const [ocrLines, setOcrLines] = useState<OcrLine[]>([])
   const [activeFieldId, setActiveFieldId] = useState<KeyField['id']>('vat-total')
   const [ocrProgress, setOcrProgress] = useState<OcrProgress | null>(null)
@@ -20,33 +20,52 @@ function App() {
 
   useEffect(() => {
     return () => {
-      if (imageUrl) URL.revokeObjectURL(imageUrl)
+      documentPages.forEach((page) => {
+        if (page.revokeUrl) URL.revokeObjectURL(page.imageUrl)
+      })
     }
-  }, [imageUrl])
+  }, [documentPages])
 
   function loadSample() {
     setText(SAMPLE_TEXT)
     setFileName('Embedded sample')
-    setImageUrl('')
-    setImageSize({ width: 0, height: 0 })
+    setDocumentPages([])
     setOcrLines([])
     setConfirmed({})
+    setOcrError('')
+    setOcrProgress(null)
+  }
+
+  function updatePageSize(pageNumber: number, width: number, height: number) {
+    setDocumentPages((currentPages) =>
+      currentPages.map((page) => (page.pageNumber === pageNumber && (page.width !== width || page.height !== height) ? { ...page, width, height } : page)),
+    )
   }
 
   async function handleFile(file: File | undefined) {
     if (!file) return
+
+    if (!isSupportedDocumentFile(file)) {
+      setFileName(file.name)
+      setOcrError(getUnsupportedDocumentMessage(file))
+      setOcrProgress(null)
+      setDocumentPages([])
+      setOcrLines([])
+      return
+    }
+
     setFileName(file.name)
     setOcrError('')
-    setOcrProgress({ status: 'starting OCR', progress: 0 })
+    setOcrProgress({ status: 'Preparing OCR', progress: 0 })
     setActiveFieldId('vat-total')
-    setImageSize({ width: 0, height: 0 })
     setOcrLines([])
-    setImageUrl(file.type.startsWith('image/') ? URL.createObjectURL(file) : '')
+    setDocumentPages([])
 
     try {
-      const result = await recognizeImage(file, setOcrProgress)
-      setText(result.text.trim() || '')
+      const result = await recognizeDocument(file, setOcrProgress)
+      setText(result.text || '')
       setOcrLines(result.lines)
+      setDocumentPages(result.pages)
       setConfirmed({})
     } catch (error) {
       setOcrError(error instanceof Error ? error.message : 'OCR failed')
@@ -60,6 +79,11 @@ function App() {
     const target = fieldRefs.current[field.id]
     target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
+
+  const previewStatus =
+    documentPages.length > 0
+      ? `${documentPages.length} rendered page${documentPages.length === 1 ? '' : 's'} with local OCR markers`
+      : 'Text preview fallback'
 
   return (
     <main className="caseworker-shell">
@@ -85,13 +109,10 @@ function App() {
           </div>
 
           <label className="dropzone">
-            <input
-              type="file"
-              accept="image/*,.pdf,application/pdf"
-              onChange={(event) => void handleFile(event.target.files?.[0])}
-            />
-            <span>Upload image/PDF</span>
+            <input type="file" accept="image/*,.pdf,application/pdf" onChange={(event) => void handleFile(event.target.files?.[0])} />
+            <span>Upload image or PDF</span>
             <small>{fileName}</small>
+            <em>Processed locally in the browser. No upload endpoint.</em>
           </label>
 
           {ocrProgress && (
@@ -100,6 +121,11 @@ function App() {
                 <span>{ocrProgress.status}</span>
                 <span>{Math.round(ocrProgress.progress * 100)}%</span>
               </div>
+              {(ocrProgress.currentPage ?? 0) > 0 && (ocrProgress.totalPages ?? 0) > 1 && (
+                <p>
+                  OCR page {ocrProgress.currentPage} of {ocrProgress.totalPages}
+                </p>
+              )}
               <progress value={ocrProgress.progress} max={1} />
             </div>
           )}
@@ -133,7 +159,7 @@ function App() {
 
           <div className="candidate-list">
             {analysis.candidates.length === 0 ? (
-              <div className="empty-state">No MVA/VAT candidates found. Paste invoice text or upload a clearer image.</div>
+              <div className="empty-state">No MVA/VAT candidates found. Paste invoice text or upload a clearer image/PDF.</div>
             ) : (
               analysis.candidates.map((candidate) => (
                 <CandidateRow
@@ -151,18 +177,17 @@ function App() {
       <section className="preview-panel">
         <div className="panel-heading">
           <h2>Document preview</h2>
-          <span>{imageUrl ? 'Image with extracted markers' : 'Text preview fallback'}</span>
+          <span>{previewStatus}</span>
         </div>
         <KeyFieldStrip fields={analysis.keyFields} activeFieldId={activeFieldId} onFieldClick={focusField} />
         <DocumentPreview
-          imageUrl={imageUrl}
-          imageSize={imageSize}
+          pages={documentPages}
           ocrLines={ocrLines}
           text={text}
           fields={analysis.keyFields}
           activeFieldId={activeFieldId}
           fieldRefs={fieldRefs}
-          onImageLoad={(image) => setImageSize({ width: image.naturalWidth, height: image.naturalHeight })}
+          onImageLoad={updatePageSize}
         />
       </section>
     </main>
@@ -181,12 +206,7 @@ function KeyFieldStrip({
   return (
     <div className="key-field-strip" aria-label="Key extracted fields">
       {fields.map((field) => (
-        <button
-          key={field.id}
-          type="button"
-          className={`key-field ${field.status} ${field.id === activeFieldId ? 'active' : ''}`}
-          onClick={() => onFieldClick(field)}
-        >
+        <button key={field.id} type="button" className={`key-field ${field.status} ${field.id === activeFieldId ? 'active' : ''}`} onClick={() => onFieldClick(field)}>
           <span>{field.label}</span>
           <strong>{field.value}</strong>
           <small>{field.confidence}% confidence</small>
@@ -197,8 +217,7 @@ function KeyFieldStrip({
 }
 
 function DocumentPreview({
-  imageUrl,
-  imageSize,
+  pages,
   ocrLines,
   text,
   fields,
@@ -206,37 +225,52 @@ function DocumentPreview({
   fieldRefs,
   onImageLoad,
 }: {
-  imageUrl: string
-  imageSize: { width: number; height: number }
+  pages: OcrPreviewPage[]
   ocrLines: OcrLine[]
   text: string
   fields: KeyField[]
   activeFieldId: KeyField['id']
   fieldRefs: MutableRefObject<Record<string, HTMLDivElement | null>>
-  onImageLoad: (image: HTMLImageElement) => void
+  onImageLoad: (pageNumber: number, width: number, height: number) => void
 }) {
-  if (!imageUrl) {
+  if (pages.length === 0) {
     return <TextPreview text={text} fields={fields} activeFieldId={activeFieldId} fieldRefs={fieldRefs} />
   }
 
+  const linesByField = new Map(fields.map((field) => [field.id, field.lineNumber ? ocrLines[field.lineNumber - 1] : undefined]))
+
   return (
     <div className="image-preview-shell">
-      <div className="document-image-wrap">
-        <img src={imageUrl} alt="Uploaded document preview" onLoad={(event) => onImageLoad(event.currentTarget)} />
-        {imageSize.width > 0 &&
-          fields.map((field) => (
-            <ImageMarker
-              key={field.id}
-              field={field}
-              line={field.lineNumber ? ocrLines[field.lineNumber - 1] : undefined}
-              imageSize={imageSize}
-              active={field.id === activeFieldId}
-              setRef={(element) => {
-                fieldRefs.current[field.id] = element
-              }}
+      {pages.map((page) => (
+        <section key={page.id} className="document-page">
+          <div className="document-page-heading">Page {page.pageNumber}</div>
+          <div className="document-image-wrap">
+            <img
+              src={page.imageUrl}
+              alt={`Document preview page ${page.pageNumber}`}
+              onLoad={(event) => onImageLoad(page.pageNumber, event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)}
             />
-          ))}
-      </div>
+            {page.width > 0 &&
+              fields.map((field) => {
+                const line = linesByField.get(field.id)
+                if (field.status === 'not-found' || line?.pageNumber !== page.pageNumber) return null
+
+                return (
+                  <ImageMarker
+                    key={`${page.id}-${field.id}`}
+                    field={field}
+                    line={line}
+                    page={page}
+                    active={field.id === activeFieldId}
+                    setRef={(element) => {
+                      fieldRefs.current[field.id] = element
+                    }}
+                  />
+                )
+              })}
+          </div>
+        </section>
+      ))}
     </div>
   )
 }
@@ -244,13 +278,13 @@ function DocumentPreview({
 function ImageMarker({
   field,
   line,
-  imageSize,
+  page,
   active,
   setRef,
 }: {
   field: KeyField
   line: OcrLine | undefined
-  imageSize: { width: number; height: number }
+  page: OcrPreviewPage
   active: boolean
   setRef: (element: HTMLDivElement | null) => void
 }) {
@@ -258,10 +292,10 @@ function ImageMarker({
   const box = line?.bbox
   const style = box
     ? {
-        left: `${(box.x0 / imageSize.width) * 100}%`,
-        top: `${(box.y0 / imageSize.height) * 100}%`,
-        width: `${Math.max(((box.x1 - box.x0) / imageSize.width) * 100, 14)}%`,
-        height: `${Math.max(((box.y1 - box.y0) / imageSize.height) * 100, 3)}%`,
+        left: `${(box.x0 / page.width) * 100}%`,
+        top: `${(box.y0 / page.height) * 100}%`,
+        width: `${Math.max(((box.x1 - box.x0) / page.width) * 100, 14)}%`,
+        height: `${Math.max(((box.y1 - box.y0) / page.height) * 100, 3)}%`,
       }
     : {
         left: '8%',
@@ -294,6 +328,7 @@ function TextPreview({
     .map((line) => line.trim())
     .filter(Boolean)
   const fieldsByLine = new Map<number, KeyField[]>()
+
   fields.forEach((field) => {
     if (!field.lineNumber) return
     fieldsByLine.set(field.lineNumber, [...(fieldsByLine.get(field.lineNumber) ?? []), field])
@@ -306,6 +341,7 @@ function TextPreview({
       {lines.map((line, index) => {
         const lineFields = fieldsByLine.get(index + 1) ?? []
         const isActiveLine = lineFields.some((field) => field.id === activeFieldId)
+
         return (
           <div
             key={`${index}-${line}`}
@@ -332,9 +368,17 @@ function TextPreview({
 
 function VatSummaryCard({ summary }: { summary: VatSummary }) {
   const title =
-    summary.state === 'found' ? 'Total VAT/MVA due for document' : summary.state === 'needs-review' ? 'Total VAT/MVA needs review' : 'No document VAT/MVA detected'
+    summary.state === 'found'
+      ? 'Total VAT/MVA due for document'
+      : summary.state === 'needs-review'
+        ? 'Total VAT/MVA needs review'
+        : 'No document VAT/MVA detected'
   const status =
-    summary.state === 'found' ? 'Validation status: detected' : summary.state === 'needs-review' ? 'Validation status: review required' : 'Validation status: not detected'
+    summary.state === 'found'
+      ? 'Validation status: detected'
+      : summary.state === 'needs-review'
+        ? 'Validation status: review required'
+        : 'Validation status: not detected'
 
   return (
     <article className={`vat-summary-card ${summary.state}`}>
