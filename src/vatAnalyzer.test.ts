@@ -16,6 +16,12 @@ describe('analyzeVatText', () => {
       state: 'found',
       amount: 250,
     })
+    expect(result.keyFields[0]).toMatchObject({
+      id: 'vat-total',
+      value: '250,00 kr',
+      status: 'found',
+      lineNumber: 1,
+    })
     expect(result.vatSummary.confidence).toBeGreaterThanOrEqual(76)
   })
 
@@ -98,6 +104,45 @@ describe('analyzeVatText', () => {
       rate: 0,
       vatAmount: 0,
       status: 'pass',
+    })
+  })
+
+  it('extracts Norwegian organisation number with MVA suffix', () => {
+    const result = analyzeVatText('Org.nr. 313 623 890 MVA - EVIG USNOBBET APE')
+
+    expect(result.keyFields.find((field) => field.id === 'org-number')).toMatchObject({
+      value: '313 623 890',
+      status: 'found',
+      lineNumber: 1,
+    })
+  })
+
+  it('extracts labelled recipient address blocks', () => {
+    const result = analyzeVatText(`
+      Mottaker:
+      Skatteetaten, Postboks 9200 Gronland
+      0134 OSLO
+      Org.nr. 313 623 890 MVA
+    `)
+
+    expect(result.keyFields.find((field) => field.id === 'recipient-address')).toMatchObject({
+      value: 'Skatteetaten, Postboks 9200 Gronland, 0134 OSLO',
+      status: 'found',
+      lineNumber: 2,
+    })
+  })
+
+  it('infers recipient address from postal and street lines when label is missing', () => {
+    const result = analyzeVatText(`
+      EVIG USNOBBET APE
+      v/ Real Naturressurs Akerbergveien 56A
+      0650 OSLO
+      Org.nr. 313 623 890 MVA
+    `)
+
+    expect(result.keyFields.find((field) => field.id === 'recipient-address')).toMatchObject({
+      value: 'v/ Real Naturressurs Akerbergveien 56A, 0650 OSLO',
+      status: 'found',
     })
   })
 })

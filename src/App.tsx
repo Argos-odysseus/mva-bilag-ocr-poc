@@ -1,33 +1,64 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import './App.css'
-import { recognizeImage, type OcrProgress } from './ocrAdapter'
-import { analyzeVatText, formatNok, SAMPLE_TEXT, type VatCandidate, type VatSummary } from './vatAnalyzer'
+import { recognizeImage, type OcrLine, type OcrProgress } from './ocrAdapter'
+import { analyzeVatText, formatNok, SAMPLE_TEXT, type KeyField, type VatCandidate, type VatSummary } from './vatAnalyzer'
 
 type ConfirmedState = Record<string, 'confirmed' | 'corrected'>
 
 function App() {
   const [text, setText] = useState(SAMPLE_TEXT)
   const [fileName, setFileName] = useState('Embedded sample')
+  const [imageUrl, setImageUrl] = useState('')
+  const [imageSize, setImageSize] = useState({ width: 0, height: 0 })
+  const [ocrLines, setOcrLines] = useState<OcrLine[]>([])
+  const [activeFieldId, setActiveFieldId] = useState<KeyField['id']>('vat-total')
   const [ocrProgress, setOcrProgress] = useState<OcrProgress | null>(null)
   const [ocrError, setOcrError] = useState('')
   const [confirmed, setConfirmed] = useState<ConfirmedState>({})
+  const fieldRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const analysis = useMemo(() => analyzeVatText(text), [text])
+
+  useEffect(() => {
+    return () => {
+      if (imageUrl) URL.revokeObjectURL(imageUrl)
+    }
+  }, [imageUrl])
+
+  function loadSample() {
+    setText(SAMPLE_TEXT)
+    setFileName('Embedded sample')
+    setImageUrl('')
+    setImageSize({ width: 0, height: 0 })
+    setOcrLines([])
+    setConfirmed({})
+  }
 
   async function handleFile(file: File | undefined) {
     if (!file) return
     setFileName(file.name)
     setOcrError('')
     setOcrProgress({ status: 'starting OCR', progress: 0 })
+    setActiveFieldId('vat-total')
+    setImageSize({ width: 0, height: 0 })
+    setOcrLines([])
+    setImageUrl(file.type.startsWith('image/') ? URL.createObjectURL(file) : '')
 
     try {
       const result = await recognizeImage(file, setOcrProgress)
-      setText(result.trim() || '')
+      setText(result.text.trim() || '')
+      setOcrLines(result.lines)
       setConfirmed({})
     } catch (error) {
       setOcrError(error instanceof Error ? error.message : 'OCR failed')
     } finally {
       setOcrProgress(null)
     }
+  }
+
+  function focusField(field: KeyField) {
+    setActiveFieldId(field.id)
+    const target = fieldRefs.current[field.id]
+    target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
   return (
@@ -48,7 +79,7 @@ function App() {
         <aside className="input-panel">
           <div className="panel-heading">
             <h2>Document intake</h2>
-            <button type="button" onClick={() => setText(SAMPLE_TEXT)}>
+            <button type="button" onClick={loadSample}>
               Load sample
             </button>
           </div>
@@ -76,7 +107,14 @@ function App() {
 
           <label className="text-editor">
             OCR or pasted text
-            <textarea value={text} onChange={(event) => setText(event.target.value)} spellCheck={false} />
+            <textarea
+              value={text}
+              onChange={(event) => {
+                setText(event.target.value)
+                setOcrLines([])
+              }}
+              spellCheck={false}
+            />
           </label>
         </aside>
 
@@ -112,12 +150,180 @@ function App() {
 
       <section className="preview-panel">
         <div className="panel-heading">
-          <h2>Extracted text preview</h2>
-          <span>{analysis.moneyHits.length} money amounts found</span>
+          <h2>Document preview</h2>
+          <span>{imageUrl ? 'Image with extracted markers' : 'Text preview fallback'}</span>
         </div>
-        <pre>{text || 'No extracted text yet.'}</pre>
+        <KeyFieldStrip fields={analysis.keyFields} activeFieldId={activeFieldId} onFieldClick={focusField} />
+        <DocumentPreview
+          imageUrl={imageUrl}
+          imageSize={imageSize}
+          ocrLines={ocrLines}
+          text={text}
+          fields={analysis.keyFields}
+          activeFieldId={activeFieldId}
+          fieldRefs={fieldRefs}
+          onImageLoad={(image) => setImageSize({ width: image.naturalWidth, height: image.naturalHeight })}
+        />
       </section>
     </main>
+  )
+}
+
+function KeyFieldStrip({
+  fields,
+  activeFieldId,
+  onFieldClick,
+}: {
+  fields: KeyField[]
+  activeFieldId: KeyField['id']
+  onFieldClick: (field: KeyField) => void
+}) {
+  return (
+    <div className="key-field-strip" aria-label="Key extracted fields">
+      {fields.map((field) => (
+        <button
+          key={field.id}
+          type="button"
+          className={`key-field ${field.status} ${field.id === activeFieldId ? 'active' : ''}`}
+          onClick={() => onFieldClick(field)}
+        >
+          <span>{field.label}</span>
+          <strong>{field.value}</strong>
+          <small>{field.confidence}% confidence</small>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function DocumentPreview({
+  imageUrl,
+  imageSize,
+  ocrLines,
+  text,
+  fields,
+  activeFieldId,
+  fieldRefs,
+  onImageLoad,
+}: {
+  imageUrl: string
+  imageSize: { width: number; height: number }
+  ocrLines: OcrLine[]
+  text: string
+  fields: KeyField[]
+  activeFieldId: KeyField['id']
+  fieldRefs: MutableRefObject<Record<string, HTMLDivElement | null>>
+  onImageLoad: (image: HTMLImageElement) => void
+}) {
+  if (!imageUrl) {
+    return <TextPreview text={text} fields={fields} activeFieldId={activeFieldId} fieldRefs={fieldRefs} />
+  }
+
+  return (
+    <div className="image-preview-shell">
+      <div className="document-image-wrap">
+        <img src={imageUrl} alt="Uploaded document preview" onLoad={(event) => onImageLoad(event.currentTarget)} />
+        {imageSize.width > 0 &&
+          fields.map((field) => (
+            <ImageMarker
+              key={field.id}
+              field={field}
+              line={field.lineNumber ? ocrLines[field.lineNumber - 1] : undefined}
+              imageSize={imageSize}
+              active={field.id === activeFieldId}
+              setRef={(element) => {
+                fieldRefs.current[field.id] = element
+              }}
+            />
+          ))}
+      </div>
+    </div>
+  )
+}
+
+function ImageMarker({
+  field,
+  line,
+  imageSize,
+  active,
+  setRef,
+}: {
+  field: KeyField
+  line: OcrLine | undefined
+  imageSize: { width: number; height: number }
+  active: boolean
+  setRef: (element: HTMLDivElement | null) => void
+}) {
+  const fallbackIndex = field.id === 'vat-total' ? 0.62 : field.id === 'org-number' ? 0.5 : 0.33
+  const box = line?.bbox
+  const style = box
+    ? {
+        left: `${(box.x0 / imageSize.width) * 100}%`,
+        top: `${(box.y0 / imageSize.height) * 100}%`,
+        width: `${Math.max(((box.x1 - box.x0) / imageSize.width) * 100, 14)}%`,
+        height: `${Math.max(((box.y1 - box.y0) / imageSize.height) * 100, 3)}%`,
+      }
+    : {
+        left: '8%',
+        top: `${fallbackIndex * 100}%`,
+        width: '84%',
+        height: '6%',
+      }
+
+  return (
+    <div ref={setRef} className={`image-marker ${field.id} ${field.status} ${active ? 'active' : ''}`} style={style}>
+      <span>{field.label}</span>
+    </div>
+  )
+}
+
+function TextPreview({
+  text,
+  fields,
+  activeFieldId,
+  fieldRefs,
+}: {
+  text: string
+  fields: KeyField[]
+  activeFieldId: KeyField['id']
+  fieldRefs: MutableRefObject<Record<string, HTMLDivElement | null>>
+}) {
+  const lines = text
+    .replace(/\r/g, '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const fieldsByLine = new Map<number, KeyField[]>()
+  fields.forEach((field) => {
+    if (!field.lineNumber) return
+    fieldsByLine.set(field.lineNumber, [...(fieldsByLine.get(field.lineNumber) ?? []), field])
+  })
+
+  if (lines.length === 0) return <pre className="text-preview">No extracted text yet.</pre>
+
+  return (
+    <div className="text-preview">
+      {lines.map((line, index) => {
+        const lineFields = fieldsByLine.get(index + 1) ?? []
+        return (
+          <div key={`${index}-${line}`} className={`text-line ${lineFields.length > 0 ? 'marked' : ''}`}>
+            <span className="text-line-number">{index + 1}</span>
+            <span>{line}</span>
+            {lineFields.map((field) => (
+              <div
+                key={field.id}
+                ref={(element) => {
+                  fieldRefs.current[field.id] = element
+                }}
+                className={`text-marker ${field.id} ${field.id === activeFieldId ? 'active' : ''}`}
+              >
+                {field.label}
+              </div>
+            ))}
+          </div>
+        )
+      })}
+    </div>
   )
 }
 

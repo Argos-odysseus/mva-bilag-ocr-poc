@@ -49,13 +49,33 @@ export type VatSummaryCandidate = {
   reason: string
 }
 
+export type KeyFieldStatus = 'found' | 'needs-review' | 'not-found'
+
+export type KeyField = {
+  id: 'vat-total' | 'org-number' | 'recipient-address'
+  label: string
+  value: string
+  status: KeyFieldStatus
+  confidence: number
+  evidence: string
+  lineNumber?: number
+}
+
 const VAT_LABELS = ['mva', 'merverdiavgift', 'moms', 'vat', 'avgift']
 const GROSS_LABELS = ['total', 'totalt', 'sum a betale', 'a betale', 'brutto', 'gross']
 const NET_LABELS = ['netto', 'grunnlag', 'subtotal', 'eks mva', 'ex vat', 'net']
 const MONEY_PATTERN = /(?:nok|kr)?\s*-?\d{1,3}(?:(?:[ .])\d{3})*(?:,\d{2})|(?:nok|kr)?\s*-?\d+(?:,\d{2})/gi
+const ORG_NUMBER_PATTERN = /\b(?:org\.?\s*(?:nr|nummer)?\.?\s*)?(\d{3}\s?\d{3}\s?\d{3})(?:\s*MVA)?\b/i
+const ADDRESS_HINTS = ['mottaker', 'kunde', 'faktura til', 'fakturert til', 'leveres til', 'adresse']
+const ADDRESS_PATTERN = /\b[\p{L} -]*(?:gate|gaten|gata|veien|vegen|vei|veg|plass|plassen|stien|svingen|ringen|alle|allé|bakken|brygge|brygga|kaia|strand|terrasse)\b/iu
+const POSTAL_PATTERN = /\b\d{4}\s+[A-ZÆØÅ][A-ZÆØÅ -]{2,}\b/i
 
 export const SAMPLE_TEXT = `Faktura 1042
 Leverandor: Nordlys Kontor AS
+Org.nr. 913 456 789 MVA
+Mottaker:
+Skatteetaten, Postboks 9200 Gronland
+0134 OSLO
 Dato: 20.05.2026
 
 Netto grunnlag 25%: kr 1 200,00
@@ -93,6 +113,7 @@ export function analyzeVatText(text: string): {
   candidates: VatCandidate[]
   moneyHits: MoneyHit[]
   vatSummary: VatSummary
+  keyFields: KeyField[]
   summary: { pass: number; review: number; fail: number }
 } {
   const lines = text
@@ -105,17 +126,140 @@ export function analyzeVatText(text: string): {
   const candidates = buildCandidates(lines, moneyHits)
     .sort((a, b) => b.confidence - a.confidence)
     .map((candidate, index) => ({ ...candidate, id: `mva-${index + 1}` }))
+  const vatSummary = summarizeVat(lines, moneyHits, candidates)
 
   return {
     candidates,
     moneyHits,
-    vatSummary: summarizeVat(lines, moneyHits, candidates),
+    vatSummary,
+    keyFields: buildKeyFields(lines, vatSummary),
     summary: {
       pass: candidates.filter((candidate) => candidate.status === 'pass').length,
       review: candidates.filter((candidate) => candidate.status === 'review').length,
       fail: candidates.filter((candidate) => candidate.status === 'fail').length,
     },
   }
+}
+
+function buildKeyFields(lines: string[], vatSummary: VatSummary): KeyField[] {
+  return [fieldFromVatSummary(vatSummary), findOrgNumber(lines), findRecipientAddress(lines)]
+}
+
+function fieldFromVatSummary(summary: VatSummary): KeyField {
+  if (summary.state === 'found' && summary.amount !== undefined) {
+    return {
+      id: 'vat-total',
+      label: 'Total MVA',
+      value: formatNok(summary.amount),
+      status: 'found',
+      confidence: summary.confidence,
+      evidence: summary.evidence,
+      lineNumber: summary.candidates[0]?.lineNumber,
+    }
+  }
+
+  return {
+    id: 'vat-total',
+    label: 'Total MVA',
+    value: summary.amount !== undefined ? formatNok(summary.amount) : '-',
+    status: summary.state,
+    confidence: summary.confidence,
+    evidence: summary.evidence,
+    lineNumber: summary.candidates[0]?.lineNumber,
+  }
+}
+
+function findOrgNumber(lines: string[]): KeyField {
+  for (const [index, line] of lines.entries()) {
+    const match = line.match(ORG_NUMBER_PATTERN)
+    if (!match) continue
+
+    const value = match[1].replace(/\s/g, '').replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3')
+    const normalized = normalize(line)
+    return {
+      id: 'org-number',
+      label: 'Orgnummer',
+      value,
+      status: 'found',
+      confidence: normalized.includes('org') ? 94 : 78,
+      evidence: line,
+      lineNumber: index + 1,
+    }
+  }
+
+  return {
+    id: 'org-number',
+    label: 'Orgnummer',
+    value: '-',
+    status: 'not-found',
+    confidence: 0,
+    evidence: 'No Norwegian organisation number pattern was detected.',
+  }
+}
+
+function findRecipientAddress(lines: string[]): KeyField {
+  const labelled = findLabelledAddress(lines)
+  if (labelled) return labelled
+
+  const inferred = inferAddressBlock(lines)
+  if (inferred) return inferred
+
+  return {
+    id: 'recipient-address',
+    label: 'Mottakeradresse',
+    value: '-',
+    status: 'not-found',
+    confidence: 0,
+    evidence: 'No recipient address block was detected.',
+  }
+}
+
+function findLabelledAddress(lines: string[]): KeyField | undefined {
+  for (const [index, line] of lines.entries()) {
+    const normalized = normalize(line)
+    if (!ADDRESS_HINTS.some((hint) => normalized.includes(normalize(hint)))) continue
+
+    const sameLineValue = line.split(':').slice(1).join(':').trim()
+    const nextLines = lines.slice(index + 1, index + 4).filter(isLikelyAddressLine)
+    const valueLines = [sameLineValue, ...nextLines].filter(Boolean)
+    if (valueLines.length === 0) continue
+
+    return {
+      id: 'recipient-address',
+      label: 'Mottakeradresse',
+      value: valueLines.join(', '),
+      status: 'found',
+      confidence: sameLineValue || nextLines.length >= 2 ? 88 : 76,
+      evidence: [line, ...nextLines].join('\n'),
+      lineNumber: sameLineValue ? index + 1 : index + 2,
+    }
+  }
+
+  return undefined
+}
+
+function inferAddressBlock(lines: string[]): KeyField | undefined {
+  const postalIndex = lines.findIndex((line) => POSTAL_PATTERN.test(line))
+  if (postalIndex === -1) return undefined
+
+  const start = Math.max(0, postalIndex - 2)
+  const block = lines.slice(start, postalIndex + 1).filter((line) => isLikelyAddressLine(line) || POSTAL_PATTERN.test(line))
+  if (block.length < 2) return undefined
+
+  return {
+    id: 'recipient-address',
+    label: 'Mottakeradresse',
+    value: block.join(', '),
+    status: 'found',
+    confidence: block.some((line) => ADDRESS_PATTERN.test(line)) ? 82 : 68,
+    evidence: block.join('\n'),
+    lineNumber: start + 1,
+  }
+}
+
+function isLikelyAddressLine(line: string): boolean {
+  const normalized = normalize(line)
+  return ADDRESS_PATTERN.test(line) || POSTAL_PATTERN.test(line) || /\bpostboks\b/.test(normalized) || /\b(?:c\/o|v\/)\b/.test(normalized)
 }
 
 function summarizeVat(lines: string[], moneyHits: MoneyHit[], candidates: VatCandidate[]): VatSummary {
