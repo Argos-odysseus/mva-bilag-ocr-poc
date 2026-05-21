@@ -322,6 +322,7 @@ function directVatSummaryCandidates(lines: string[], moneyHits: MoneyHit[]): Vat
   lines.forEach((line, index) => {
     const lower = normalize(line)
     if (!hasVatLabel(lower)) return
+    if (isNetExVatLine(lower)) return
 
     const amounts = moneyHits.filter((hit) => hit.lineNumber === index + 1)
     if (amounts.length === 0) return
@@ -417,6 +418,7 @@ function buildCandidates(lines: string[], moneyHits: MoneyHit[]): Omit<VatCandid
     const amounts = moneyHits.filter((hit) => hit.lineNumber === index + 1)
 
     if (!hasVatLabel && rates.length === 0) return
+    if (isNetExVatLine(lower)) return
     const lineRates = rates.length > 0 ? rates : inferRatesNear(lines, index)
     const vatAmounts = amounts.filter((hit) => hit.label === 'vat' || hasVatLabel)
 
@@ -498,6 +500,7 @@ function findMoneyHits(line: string, lineNumber: number): MoneyHit[] {
 }
 
 function labelForLine(lower: string): MoneyHit['label'] {
+  if (isNetExVatLine(lower)) return 'net'
   if (hasVatLabel(lower)) return 'vat'
   if (GROSS_LABELS.some((label) => lower.includes(label))) return 'gross'
   if (NET_LABELS.some((label) => lower.includes(label))) return 'net'
@@ -506,6 +509,10 @@ function labelForLine(lower: string): MoneyHit['label'] {
 
 function hasVatLabel(lower: string): boolean {
   return VAT_LABELS.some((label) => lower.includes(label)) || /\bmva\s*[- ]?\s*belop\b/.test(lower)
+}
+
+function isNetExVatLine(lower: string): boolean {
+  return /\b(?:eks|ex|uten)\.?\s*(?:mva|vat|moms)\b/.test(lower) || /\b(?:netto|grunnlag|subtotal)\b/.test(lower)
 }
 
 function bestNearbyHit(hits: MoneyHit[], label: MoneyHit['label']): MoneyHit | undefined {
@@ -529,8 +536,8 @@ function dedupeCandidates(candidates: Omit<VatCandidate, 'id'>[]): Omit<VatCandi
 }
 
 function extractRates(value: string): VatRate[] {
-  const matches = value.match(/\b(?:25|15|12|0)\s*%/g) ?? []
-  return matches.map((match) => Number.parseInt(match, 10) as VatRate)
+  const matches = Array.from(value.matchAll(/(?<![\d.,])(?:25|15|12|0)(?:[.,]0+)?\s*%/g))
+  return matches.map((match) => Number.parseInt(match[0], 10) as VatRate)
 }
 
 function snippetAround(lines: string[], lineIndex: number): string {

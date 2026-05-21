@@ -93,6 +93,40 @@ describe('analyzeVatText', () => {
     })
   })
 
+  it('prefers the only explicit MVA row over several item and ex-MVA amount rows', () => {
+    const result = analyzeVatText(`
+      Smortrele for styring av VVB 1,0 stk 1 17 100,00
+      Arbeid montering 1,0 stk 1 2 400,00
+      Materiell diverse 1,0 stk 1 980,00
+      Totalt eks. mva 17 100,00
+      Merverdiavgift 25.0% 4 275,00
+      A betale 21 375,00
+    `)
+
+    expect(result.vatSummary).toMatchObject({
+      state: 'found',
+      amount: 4275,
+    })
+    expect(result.keyFields[0]).toMatchObject({
+      id: 'vat-total',
+      value: '4 275,00 kr',
+      status: 'found',
+      lineNumber: 5,
+    })
+    expect(result.candidates[0]).toMatchObject({
+      rate: 25,
+      vatAmount: 4275,
+      status: 'pass',
+      lineNumber: 5,
+    })
+    expect(result.candidates).not.toContainEqual(
+      expect.objectContaining({
+        rate: 0,
+        vatAmount: 17100,
+      }),
+    )
+  })
+
   it('handles 0 percent VAT as a zero amount candidate', () => {
     const result = analyzeVatText(`
       Eksport grunnlag 0%: 2 500,00
